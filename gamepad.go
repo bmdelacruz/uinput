@@ -47,8 +47,14 @@ type GamePad interface {
 	Trigger1LeftPress() error
 	Trigger1LeftRelease() error
 
+	Trigger1RightPress() error
+	Trigger1RightRelease() error
+
 	Trigger2LeftPress() error
 	Trigger2LeftRelease() error
+
+	Trigger2RightPress() error
+	Trigger2RightRelease() error
 
 	SelectPress() error
 	SelectRelease() error
@@ -117,12 +123,28 @@ func (vgp vGamePad) Trigger1LeftRelease() error {
 	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger1Left}, btnStateReleased)
 }
 
+func (vgp vGamePad) Trigger1RightPress() error {
+	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger1Right}, btnStatePressed)
+}
+
+func (vgp vGamePad) Trigger1RightRelease() error {
+	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger1Right}, btnStateReleased)
+}
+
 func (vgp vGamePad) Trigger2LeftPress() error {
 	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger2Left}, btnStatePressed)
 }
 
 func (vgp vGamePad) Trigger2LeftRelease() error {
 	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger2Left}, btnStateReleased)
+}
+
+func (vgp vGamePad) Trigger2RightPress() error {
+	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger2Right}, btnStatePressed)
+}
+
+func (vgp vGamePad) Trigger2RightRelease() error {
+	return sendBtnEvent(vgp.deviceFile, []int{evBtnTrigger2Right}, btnStateReleased)
 }
 
 func (vgp vGamePad) SelectPress() error {
