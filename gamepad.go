@@ -187,7 +187,7 @@ func (vgp vGamePad) DpadDownPress() error {
 }
 
 func (vgp vGamePad) DpadDownRelease() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadRight}, btnStateReleased)
+	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadDown}, btnStateReleased)
 }
 
 func (vgp vGamePad) DpadLeftPress() error {
