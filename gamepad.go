@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	absRx = 0x03
-	absRy = 0x04
+	absRx    = 0x03
+	absRy    = 0x04
+	absHat0x = 0x10
+	absHat0y = 0x11
 
 	evBtnSouth         = 0x130
 	evBtnEast          = 0x131
@@ -63,18 +65,7 @@ type GamePad interface {
 	ThumbRightPress() error
 	ThumbRightRelease() error
 
-	DpadUpPress() error
-	DpadUpRelease() error
-
-	DpadDownPress() error
-	DpadDownRelease() error
-
-	DpadLeftPress() error
-	DpadLeftRelease() error
-
-	DpadRightPress() error
-	DpadRightRelease() error
-
+	Move(x, y int32) error
 	MoveLeftStick(x, y int32) error
 	MoveRightStick(x, y int32) error
 
@@ -174,51 +165,29 @@ func (vgp vGamePad) ThumbRightRelease() error {
 	return sendBtnEvent(vgp.deviceFile, []int{evBtnThumbRight}, btnStateReleased)
 }
 
-func (vgp vGamePad) DpadUpPress() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadUp}, btnStatePressed)
-}
-
-func (vgp vGamePad) DpadUpRelease() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadUp}, btnStateReleased)
-}
-
-func (vgp vGamePad) DpadDownPress() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadDown}, btnStatePressed)
-}
-
-func (vgp vGamePad) DpadDownRelease() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadDown}, btnStateReleased)
-}
-
-func (vgp vGamePad) DpadLeftPress() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadLeft}, btnStatePressed)
-}
-
-func (vgp vGamePad) DpadLeftRelease() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadLeft}, btnStateReleased)
-}
-
-func (vgp vGamePad) DpadRightPress() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadRight}, btnStatePressed)
-}
-
-func (vgp vGamePad) DpadRightRelease() error {
-	return sendBtnEvent(vgp.deviceFile, []int{evBtnDpadRight}, btnStateReleased)
+func (vgp vGamePad) Move(x, y int32) error {
+	return sendArbitraryAbsEvent(vgp.deviceFile, absHat0x, absHat0y, x, y)
 }
 
 func (vgp vGamePad) MoveLeftStick(x, y int32) error {
-	return sendAbsEvent(vgp.deviceFile, x, y)
+	return sendArbitraryAbsEvent(vgp.deviceFile, absX, absY, x, y)
 }
 
 func (vgp vGamePad) MoveRightStick(x, y int32) error {
-	return sendAbsREvent(vgp.deviceFile, x, y)
+	return sendArbitraryAbsEvent(vgp.deviceFile, absRx, absRy, x, y)
 }
 
 func (vgp vGamePad) Close() error {
 	return closeDevice(vgp.deviceFile)
 }
 
-func CreateGamePad(path string, name []byte) (GamePad, error) {
+func CreateGamePad(
+	path string,
+	name []byte,
+	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
+	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+	minDpadX, maxDpadX, minDpadY, maxDpadY int32, // FIXME: should i use a struct for this?
+) (GamePad, error) {
 	err := validateDevicePath(path)
 	if err != nil {
 		return nil, err
@@ -228,7 +197,13 @@ func CreateGamePad(path string, name []byte) (GamePad, error) {
 		return nil, err
 	}
 
-	fd, err := createGamePad(path, name)
+	fd, err := createGamePad(
+		path,
+		name,
+		minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
+		minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+		minDpadX, maxDpadX, minDpadY, maxDpadY,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +211,13 @@ func CreateGamePad(path string, name []byte) (GamePad, error) {
 	return vGamePad{name: name, deviceFile: fd}, nil
 }
 
-func createGamePad(path string, name []byte) (fd *os.File, err error) {
+func createGamePad(
+	path string,
+	name []byte,
+	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
+	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+	minDpadX, maxDpadX, minDpadY, maxDpadY int32,
+) (fd *os.File, err error) {
 	deviceFile, err := createDeviceFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not create gamepad input device: %v", err)
@@ -317,25 +298,10 @@ func createGamePad(path string, name []byte) (fd *os.File, err error) {
 		return nil, fmt.Errorf("failed to register thumb right gamepad button event: %v", err)
 	}
 
-	err = ioctl(deviceFile, uiSetKeyBit, uintptr(evBtnDpadUp))
+	err = registerDevice(deviceFile, uintptr(evAbs))
 	if err != nil {
 		deviceFile.Close()
-		return nil, fmt.Errorf("failed to register dpad up gamepad button event: %v", err)
-	}
-	err = ioctl(deviceFile, uiSetKeyBit, uintptr(evBtnDpadDown))
-	if err != nil {
-		deviceFile.Close()
-		return nil, fmt.Errorf("failed to register dpad down gamepad button event: %v", err)
-	}
-	err = ioctl(deviceFile, uiSetKeyBit, uintptr(evBtnDpadLeft))
-	if err != nil {
-		deviceFile.Close()
-		return nil, fmt.Errorf("failed to register dpad left gamepad button event: %v", err)
-	}
-	err = ioctl(deviceFile, uiSetKeyBit, uintptr(evBtnDpadRight))
-	if err != nil {
-		deviceFile.Close()
-		return nil, fmt.Errorf("failed to register dpad right gamepad button event: %v", err)
+		return nil, fmt.Errorf("failed to register absolute axis input device: %v", err)
 	}
 
 	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absX))
@@ -358,6 +324,32 @@ func createGamePad(path string, name []byte) (fd *os.File, err error) {
 		deviceFile.Close()
 		return nil, fmt.Errorf("failed to register right stick y gamepad event: %v", err)
 	}
+	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absHat0x))
+	if err != nil {
+		deviceFile.Close()
+		return nil, fmt.Errorf("failed to register dpad x gamepad event: %v", err)
+	}
+	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absHat0y))
+	if err != nil {
+		deviceFile.Close()
+		return nil, fmt.Errorf("failed to register dpad y gamepad event: %v", err)
+	}
+
+	var absMin [absSize]int32
+	absMin[absX] = minLeftStickX
+	absMin[absY] = minLeftStickY
+	absMin[absRx] = minRightStickX
+	absMin[absRy] = minRightStickY
+	absMin[absHat0x] = minDpadX
+	absMin[absHat0y] = minDpadY
+
+	var absMax [absSize]int32
+	absMax[absX] = maxLeftStickX
+	absMax[absY] = maxLeftStickY
+	absMax[absRx] = maxRightStickX
+	absMax[absRy] = maxRightStickY
+	absMax[absHat0x] = maxDpadX
+	absMax[absHat0y] = maxDpadY
 
 	return createUsbDevice(deviceFile, uinputUserDev{
 		Name: toUinputName(name),
@@ -367,25 +359,19 @@ func createGamePad(path string, name []byte) (fd *os.File, err error) {
 			Product: 0x0819,
 			Version: 1,
 		},
+		Absmin: absMin,
+		Absmax: absMax,
 	})
 }
 
-func sendAbsREvent(deviceFile *os.File, xPos int32, yPos int32) error {
+func sendArbitraryAbsEvent(deviceFile *os.File, codeX, codeY uint16, xPos, yPos int32) error {
 	var ev [2]inputEvent
 	ev[0].Type = evAbs
-	ev[0].Code = absRx
+	ev[0].Code = codeX
 	ev[0].Value = xPos
 
-	// Various tests (using evtest) have shown that positioning on x=0;y=0 doesn't trigger any event and will not move
-	// the cursor as expected. Setting at least one of the coordinates to -1 will however have the desired effect of
-	// moving the cursor to the upper left corner. Interestingly, the same is true for equivalent code in C, which rules
-	// out issues related to Go's data type representation or the like. This will need to be investigated further...
-	if xPos == 0 && yPos == 0 {
-		yPos--
-	}
-
 	ev[1].Type = evAbs
-	ev[1].Code = absRy
+	ev[1].Code = codeY
 	ev[1].Value = yPos
 
 	for _, iev := range ev {
