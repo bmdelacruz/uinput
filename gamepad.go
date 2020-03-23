@@ -7,8 +7,10 @@ import (
 )
 
 const (
+	absZ     = 0x02
 	absRx    = 0x03
 	absRy    = 0x04
+	absRz    = 0x05
 	absHat0x = 0x10
 	absHat0y = 0x11
 
@@ -72,8 +74,8 @@ type GamePad interface {
 	ThumbRightRelease() error
 
 	Move(x, y int32) error
-	MoveLeftStick(x, y int32) error
-	MoveRightStick(x, y int32) error
+	MoveLeftStick(x, y, z int32) error
+	MoveRightStick(x, y, z int32) error
 
 	io.Closer
 }
@@ -188,15 +190,15 @@ func (vgp vGamePad) ThumbRightRelease() error {
 }
 
 func (vgp vGamePad) Move(x, y int32) error {
-	return sendArbitraryAbsEvent(vgp.deviceFile, absHat0x, absHat0y, x, y)
+	return sendTwoAxisAbsEvent(vgp.deviceFile, absHat0x, absHat0y, x, y)
 }
 
-func (vgp vGamePad) MoveLeftStick(x, y int32) error {
-	return sendArbitraryAbsEvent(vgp.deviceFile, absX, absY, x, y)
+func (vgp vGamePad) MoveLeftStick(x, y, z int32) error {
+	return sendThreeAxisAbsEvent(vgp.deviceFile, absX, absY, absZ, x, y, z)
 }
 
-func (vgp vGamePad) MoveRightStick(x, y int32) error {
-	return sendArbitraryAbsEvent(vgp.deviceFile, absRx, absRy, x, y)
+func (vgp vGamePad) MoveRightStick(x, y, z int32) error {
+	return sendThreeAxisAbsEvent(vgp.deviceFile, absRx, absRy, absRz, x, y, z)
 }
 
 func (vgp vGamePad) Close() error {
@@ -206,8 +208,8 @@ func (vgp vGamePad) Close() error {
 func CreateGamePad(
 	path string,
 	name []byte,
-	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
-	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY, minLeftStickZ, maxLeftStickZ,
+	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY, minRightStickZ, maxRightStickZ,
 	minDpadX, maxDpadX, minDpadY, maxDpadY int32, // FIXME: should i use a struct for this?
 ) (GamePad, error) {
 	err := validateDevicePath(path)
@@ -222,8 +224,8 @@ func CreateGamePad(
 	fd, err := createGamePad(
 		path,
 		name,
-		minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
-		minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+		minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY, minLeftStickZ, maxLeftStickZ,
+		minRightStickX, maxRightStickX, minRightStickY, maxRightStickY, minRightStickZ, maxRightStickZ,
 		minDpadX, maxDpadX, minDpadY, maxDpadY,
 	)
 	if err != nil {
@@ -236,8 +238,8 @@ func CreateGamePad(
 func createGamePad(
 	path string,
 	name []byte,
-	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY,
-	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY,
+	minLeftStickX, maxLeftStickX, minLeftStickY, maxLeftStickY, minLeftStickZ, maxLeftStickZ,
+	minRightStickX, maxRightStickX, minRightStickY, maxRightStickY, minRightStickZ, maxRightStickZ,
 	minDpadX, maxDpadX, minDpadY, maxDpadY int32,
 ) (fd *os.File, err error) {
 	deviceFile, err := createDeviceFile(path)
@@ -336,6 +338,11 @@ func createGamePad(
 		deviceFile.Close()
 		return nil, fmt.Errorf("failed to register left stick y gamepad event: %v", err)
 	}
+	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absZ))
+	if err != nil {
+		deviceFile.Close()
+		return nil, fmt.Errorf("failed to register left stick y gamepad event: %v", err)
+	}
 	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absRx))
 	if err != nil {
 		deviceFile.Close()
@@ -345,6 +352,11 @@ func createGamePad(
 	if err != nil {
 		deviceFile.Close()
 		return nil, fmt.Errorf("failed to register right stick y gamepad event: %v", err)
+	}
+	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absRz))
+	if err != nil {
+		deviceFile.Close()
+		return nil, fmt.Errorf("failed to register left stick y gamepad event: %v", err)
 	}
 	err = ioctl(deviceFile, uiSetAbsBit, uintptr(absHat0x))
 	if err != nil {
@@ -360,16 +372,20 @@ func createGamePad(
 	var absMin [absSize]int32
 	absMin[absX] = minLeftStickX
 	absMin[absY] = minLeftStickY
+	absMin[absZ] = minLeftStickZ
 	absMin[absRx] = minRightStickX
 	absMin[absRy] = minRightStickY
+	absMin[absRz] = minRightStickZ
 	absMin[absHat0x] = minDpadX
 	absMin[absHat0y] = minDpadY
 
 	var absMax [absSize]int32
 	absMax[absX] = maxLeftStickX
 	absMax[absY] = maxLeftStickY
+	absMax[absZ] = maxLeftStickZ
 	absMax[absRx] = maxRightStickX
 	absMax[absRy] = maxRightStickY
+	absMax[absRz] = maxRightStickZ
 	absMax[absHat0x] = maxDpadX
 	absMax[absHat0y] = maxDpadY
 
@@ -386,7 +402,7 @@ func createGamePad(
 	})
 }
 
-func sendArbitraryAbsEvent(deviceFile *os.File, codeX, codeY uint16, xPos, yPos int32) error {
+func sendTwoAxisAbsEvent(deviceFile *os.File, codeX, codeY uint16, xPos, yPos int32) error {
 	var ev [2]inputEvent
 	ev[0].Type = evAbs
 	ev[0].Code = codeX
@@ -395,6 +411,35 @@ func sendArbitraryAbsEvent(deviceFile *os.File, codeX, codeY uint16, xPos, yPos 
 	ev[1].Type = evAbs
 	ev[1].Code = codeY
 	ev[1].Value = yPos
+
+	for _, iev := range ev {
+		buf, err := inputEventToBuffer(iev)
+		if err != nil {
+			return fmt.Errorf("writing abs event failed: %v", err)
+		}
+
+		_, err = deviceFile.Write(buf)
+		if err != nil {
+			return fmt.Errorf("failed to write abs event to device file: %v", err)
+		}
+	}
+
+	return syncEvents(deviceFile)
+}
+
+func sendThreeAxisAbsEvent(deviceFile *os.File, codeX, codeY, codeZ uint16, xPos, yPos, zPos int32) error {
+	var ev [3]inputEvent
+	ev[0].Type = evAbs
+	ev[0].Code = codeX
+	ev[0].Value = xPos
+
+	ev[1].Type = evAbs
+	ev[1].Code = codeY
+	ev[1].Value = yPos
+
+	ev[2].Type = evAbs
+	ev[2].Code = codeZ
+	ev[2].Value = zPos
 
 	for _, iev := range ev {
 		buf, err := inputEventToBuffer(iev)
